@@ -12,10 +12,6 @@ export interface AuthSocket extends Socket {
 }
 
 export const socketAuthMiddleware = (socket: Socket, next: (err?: ExtendedError) => void) => {
-    console.log("🔌 New Connection Attempt:", socket.id);
-    console.log("   Headers:", socket.handshake.headers);
-    console.log("   Auth:", socket.handshake.auth);
-
     const cookieHeader = socket.handshake.headers.cookie;
     let token = null;
 
@@ -24,12 +20,10 @@ export const socketAuthMiddleware = (socket: Socket, next: (err?: ExtendedError)
         token = cookies.app_session;
     }
 
-    // Fallback: Check auth object (handshake)
     if (!token && socket.handshake.auth && socket.handshake.auth.token) {
         token = socket.handshake.auth.token;
     }
 
-    // Fallback: Check Authorization header
     if (!token && socket.handshake.headers.authorization) {
         const parts = socket.handshake.headers.authorization.split(' ');
         if (parts.length === 2 && parts[0] === 'Bearer') {
@@ -37,43 +31,36 @@ export const socketAuthMiddleware = (socket: Socket, next: (err?: ExtendedError)
         }
     }
 
-    if (!token) {
-        return next(new Error('Authentication error: No token provided'));
-    }
+    if (!token) return next(new Error('Authentication error: No token provided'));
 
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as any;
 
-        // Define a helper to extract ID safely
-        const extractId = (obj: any): string | null => {
-            if (!obj) return null;
-            if (typeof obj === 'string') return obj;
-            // If it's the [object Object] string, it's already ruined
-            if (obj === '[object Object]') return null;
-            if (typeof obj === 'object') {
-                return obj.id || obj._id || (obj.toString() !== '[object Object]' ? obj.toString() : null);
+        const extractId = (val: any): string | null => {
+            if (!val) return null;
+            if (typeof val === 'string') {
+                return (val !== '[object Object]' && val.length > 5) ? val : null;
+            }
+            if (typeof val === 'object') {
+                return extractId(val.id || val._id || val.sub);
             }
             return null;
         };
 
-        // Normalized user object from payload (handles flat, nested 'user')
-        const userPayload = (decoded.user && typeof decoded.user === 'object') ? decoded.user : decoded;
-
-        // Try to get ID from multiple common keys
-        const userId = extractId(userPayload.id) || extractId(userPayload._id) || extractId(userPayload.sub);
+        const userId = extractId(decoded.user) || extractId(decoded);
 
         if (!userId) {
-            console.error("   ❌ Auth Error: No valid user ID found in token payload:", JSON.stringify(decoded));
-            return next(new Error('Authentication error: No user ID in token'));
+            console.error("❌ Auth Error: Could not find valid ID in payload:", JSON.stringify(decoded));
+            return next(new Error('Authentication error: Invalid user identity in token'));
         }
 
         (socket as AuthSocket).user = {
             _id: userId,
-            role: userPayload.role || 'user',
-            name: userPayload.name || 'User'
+            role: (decoded.user?.role || decoded.role || 'user').toString(),
+            name: (decoded.user?.name || decoded.name || 'User').toString()
         };
 
-        console.log(`   ✅ User Authenticated: ${userId} (Payload Type: ${typeof (userPayload.id || userPayload._id)})`);
+        console.log(`✅ Socket Auth Success: ${userId} (${(socket as AuthSocket).user?.role})`);
         next();
     } catch (err) {
         return next(new Error('Authentication error: Invalid token'));

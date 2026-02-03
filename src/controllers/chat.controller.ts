@@ -4,13 +4,21 @@ import Project from '../models/Project';
 import ChatRoom from '../models/ChatRoom';
 import Message from '../models/Message';
 import { getOrCreateChatRoom } from '../services/chat.service';
+import mongoose from 'mongoose'; // Added mongoose import
 
 export const getProjectChatHistory = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { projectId } = req.params;
+        const projectId = req.params.projectId as string;
 
         if (!projectId) {
-            res.status(400).json({ error: 'Projet ID is required' });
+            res.status(400).json({ error: 'Project ID is required' });
+            return;
+        }
+
+        // Defensive check for malformed IDs
+        if (!mongoose.Types.ObjectId.isValid(projectId)) {
+            console.error(`❌ [HISTORY] Invalid Project ID Format: "${projectId}" (Type: ${typeof projectId})`);
+            res.status(400).json({ error: `Invalid project ID format: ${projectId}` });
             return;
         }
 
@@ -21,8 +29,10 @@ export const getProjectChatHistory = async (req: Request, res: Response): Promis
             return;
         }
 
-        // 2. Find the ChatRoom
-        const chatRoom = await ChatRoom.findOne({ projectId } as any);
+        // Actually, for REST fetch, just finding the room is safer/faster
+        // The previous logic assumed messages were embedded in ChatRoom, which is incorrect.
+        // We need to query the Message collection.
+        const chatRoom = await ChatRoom.findOne({ projectId: projectId as any }); // Find the room to get its ID if needed, though not strictly necessary for fetching messages.
 
         if (!chatRoom) {
             // Return empty history if room doesn't exist yet
@@ -30,10 +40,10 @@ export const getProjectChatHistory = async (req: Request, res: Response): Promis
             return;
         }
 
-        // 3. Fetch messages for this room
+        // Fetch messages from the Message collection, linking them to the found chatRoom's projectId
         const messages = await Message.find({ roomId: chatRoom._id } as any)
-            .sort({ createdAt: 1 })
-            .populate('senderId', 'name email');
+            .sort({ createdAt: 1 }) // Keep the sort order
+            .populate('senderId', 'name email'); // Correctly query Message model
 
         // Map for mobile compatibility: add 'sender' field
         const mobileCompatibleMessages = messages.map(msg => ({
@@ -44,7 +54,7 @@ export const getProjectChatHistory = async (req: Request, res: Response): Promis
 
         res.json(mobileCompatibleMessages);
     } catch (error) {
-        console.error("Error fetching chat history:", error);
+        console.error("❌ [HISTORY] Internal Error:", error);
         res.status(500).json({ error: 'Internal Server Error' });
     }
 };

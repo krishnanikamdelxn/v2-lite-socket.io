@@ -25,26 +25,30 @@ import Project from '../models/Project';
 import User from '../models/User';
 
 export const getOrCreateChatRoom = async (projectId: string, userId: string): Promise<IChatRoom | null> => {
+    // 0. Type check/Cast incoming IDs
+    if (!mongoose.Types.ObjectId.isValid(projectId) || !mongoose.Types.ObjectId.isValid(userId)) {
+        console.error(`❌ [SERVICE] Invalid ID format. Project: ${projectId}, User: ${userId}`);
+        throw new Error("Invalid Project or User ID format");
+    }
+
+    const pId = new mongoose.Types.ObjectId(projectId);
+    const uId = new mongoose.Types.ObjectId(userId);
+
     // 1. Verify Project Exists
-    const project = await Project.findById(projectId);
+    const project = await Project.findById(pId);
     if (!project) {
         throw new Error("Project not found");
     }
 
     // 2. Fetch User to check Role
-    if (!userId || userId === "[object Object]") {
-        console.error("❌ chat.service: Invalid userId received:", userId);
-        throw new Error("Invalid user authentication");
-    }
-
-    const user = await User.findById(userId);
+    const user = await User.findById(uId);
     if (!user) {
         throw new Error("User not found");
     }
 
     // 3. Authorization Check
     // Admin (Manager) or Client are allowed.
-    const isManager = project.manager.toString() === userId;
+    const isManager = project.manager.toString() === uId.toString();
     // Note: Assuming project has clientEmail, we might need to look up client user by email if client ID is not directly stored or check if user.email matches project.clientEmail
     // Based on the user's prompt, they want STRICT Admin and Client role check.
 
@@ -66,7 +70,7 @@ export const getOrCreateChatRoom = async (projectId: string, userId: string): Pr
 
     // 4. Find or Create Room
     // Cast to any to avoid TS mismatch between string ID and ObjectId
-    let room = await ChatRoom.findOne({ projectId: projectId as any });
+    let room = await ChatRoom.findOne({ projectId: pId } as any);
 
     if (!room) {
         // Resolve Member IDs
@@ -86,13 +90,13 @@ export const getOrCreateChatRoom = async (projectId: string, userId: string): Pr
 
         room = await ChatRoom.create({
             type: "project",
-            projectId: project._id as any,
+            projectId: pId as any,
             members: members
         });
     } else {
         // Ensure current user is in members list if authorized (sync)
-        if (!room.members.map(m => m.toString()).includes(userId)) {
-            room.members.push(userId as any);
+        if (!room.members.map(m => m.toString()).includes(uId.toString())) {
+            room.members.push(uId as any);
             await room.save();
         }
     }
