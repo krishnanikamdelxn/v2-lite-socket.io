@@ -23,7 +23,7 @@ app.use(cookieParser());
 
 const io = new Server(httpServer, {
     cors: {
-        origin: "*", // Allow all origins for testing
+        origin: process.env.CLIENT_URL || "http://localhost:3000",
         credentials: true
     }
 });
