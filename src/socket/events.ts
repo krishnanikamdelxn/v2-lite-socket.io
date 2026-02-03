@@ -11,7 +11,13 @@ export const handleSocketEvents = (io: Server) => {
         }
 
         const { _id, name } = authSocket.user;
-        console.log(`User connected: ${name} (${_id})`);
+        console.log(`🔌 User connected: ${name} (ID: ${_id})`);
+
+        if (!_id) {
+            console.error("❌ Socket Error: Connection established without user ID");
+            socket.disconnect();
+            return;
+        }
 
         // Join user's private room
         socket.join(_id.toString());

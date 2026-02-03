@@ -32,6 +32,11 @@ export const getOrCreateChatRoom = async (projectId: string, userId: string): Pr
     }
 
     // 2. Fetch User to check Role
+    if (!userId || userId === "[object Object]") {
+        console.error("❌ chat.service: Invalid userId received:", userId);
+        throw new Error("Invalid user authentication");
+    }
+
     const user = await User.findById(userId);
     if (!user) {
         throw new Error("User not found");

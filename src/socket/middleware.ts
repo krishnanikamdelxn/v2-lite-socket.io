@@ -44,18 +44,33 @@ export const socketAuthMiddleware = (socket: Socket, next: (err?: ExtendedError)
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as any;
 
-        // Handle both flat and nested payloads from different auth implementations
-        if (decoded.user && typeof decoded.user === 'object') {
-            (socket as AuthSocket).user = {
-                _id: decoded.user.id || decoded.user._id,
-                role: decoded.user.role,
-                name: decoded.user.name || 'User'
-            };
-        } else {
-            (socket as AuthSocket).user = decoded;
+        // Define a helper to extract ID safely
+        const extractId = (obj: any): string | null => {
+            if (!obj) return null;
+            if (typeof obj === 'string') return obj;
+            if (typeof obj === 'object') {
+                return obj.id || obj._id || null;
+            }
+            return null;
+        };
+
+        // Normalized user object from payload (handles flat, nested 'user')
+        const userPayload = (decoded.user && typeof decoded.user === 'object') ? decoded.user : decoded;
+        const rawId = userPayload.id || userPayload._id;
+        const userId = extractId(rawId);
+
+        if (!userId || typeof userId !== 'string') {
+            console.error("   ❌ Auth Error: No valid user ID found in token payload:", JSON.stringify(decoded));
+            return next(new Error('Authentication error: No user ID in token'));
         }
 
-        console.log("   ✅ User Authenticated:", (socket as AuthSocket).user?._id);
+        (socket as AuthSocket).user = {
+            _id: userId,
+            role: userPayload.role || 'user',
+            name: userPayload.name || 'User'
+        };
+
+        console.log("   ✅ User Authenticated:", userId, `(${userPayload.role})`);
         next();
     } catch (err) {
         return next(new Error('Authentication error: Invalid token'));
