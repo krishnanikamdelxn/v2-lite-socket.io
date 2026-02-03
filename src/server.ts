@@ -28,8 +28,13 @@ const io = new Server(httpServer, {
     }
 });
 
+import chatRoutes from './routes/chat.routes';
+
 // Middleware
 io.use(socketAuthMiddleware);
+
+// Routes
+app.use('/api/chat', chatRoutes);
 
 // Events
 handleSocketEvents(io);
