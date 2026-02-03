@@ -43,7 +43,19 @@ export const socketAuthMiddleware = (socket: Socket, next: (err?: ExtendedError)
 
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as any;
-        (socket as AuthSocket).user = decoded;
+
+        // Handle both flat and nested payloads from different auth implementations
+        if (decoded.user && typeof decoded.user === 'object') {
+            (socket as AuthSocket).user = {
+                _id: decoded.user.id || decoded.user._id,
+                role: decoded.user.role,
+                name: decoded.user.name || 'User'
+            };
+        } else {
+            (socket as AuthSocket).user = decoded;
+        }
+
+        console.log("   ✅ User Authenticated:", (socket as AuthSocket).user?._id);
         next();
     } catch (err) {
         return next(new Error('Authentication error: Invalid token'));

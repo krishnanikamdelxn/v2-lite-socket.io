@@ -45,7 +45,18 @@ export const handleSocketEvents = (io: Server) => {
                 if (!room) throw new Error("Room not found");
 
                 const message = await chatService.saveMessage(room._id.toString(), _id.toString(), content, type, fileUrl);
-                io.to(room._id.toString()).emit('receive_message', message);
+
+                // Populate senderId for the broadcast
+                const populatedMessage = await message.populate('senderId', 'name email');
+
+                // Mobile app expects 'sender' (the ID) for bubble alignment logic
+                const mobileCompatibleMessage = {
+                    ...populatedMessage.toObject(),
+                    sender: _id.toString(), // Add 'sender' for mobile compatibility
+                    id: populatedMessage._id.toString()
+                };
+
+                io.to(room._id.toString()).emit('receive_message', mobileCompatibleMessage);
             } catch (err: any) {
                 console.error("Send Message Error:", err.message);
                 socket.emit('error', { message: 'Error sending message' });

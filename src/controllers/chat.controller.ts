@@ -35,7 +35,14 @@ export const getProjectChatHistory = async (req: Request, res: Response): Promis
             .sort({ createdAt: 1 })
             .populate('senderId', 'name email');
 
-        res.json(messages);
+        // Map for mobile compatibility: add 'sender' field
+        const mobileCompatibleMessages = messages.map(msg => ({
+            ...msg.toObject(),
+            sender: msg.senderId ? (msg.senderId as any)._id.toString() : null,
+            id: msg._id.toString()
+        }));
+
+        res.json(mobileCompatibleMessages);
     } catch (error) {
         console.error("Error fetching chat history:", error);
         res.status(500).json({ error: 'Internal Server Error' });
