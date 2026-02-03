@@ -12,6 +12,9 @@ export interface AuthSocket extends Socket {
 }
 
 export const socketAuthMiddleware = (socket: Socket, next: (err?: ExtendedError) => void) => {
+    console.log("🔍 [AUTH-DEBUG] Handshake Auth:", JSON.stringify(socket.handshake.auth));
+    console.log("🔍 [AUTH-DEBUG] Cookies Presence:", !!socket.handshake.headers.cookie);
+
     const cookieHeader = socket.handshake.headers.cookie;
     let token = null;
 
