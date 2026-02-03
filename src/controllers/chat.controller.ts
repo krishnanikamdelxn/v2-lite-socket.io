@@ -2,6 +2,7 @@
 import { Request, Response } from 'express';
 import Project from '../models/Project';
 import ChatRoom from '../models/ChatRoom';
+import Message from '../models/Message';
 import { getOrCreateChatRoom } from '../services/chat.service';
 
 export const getProjectChatHistory = async (req: Request, res: Response): Promise<void> => {
@@ -20,12 +21,8 @@ export const getProjectChatHistory = async (req: Request, res: Response): Promis
             return;
         }
 
-        // 2. Get Room ID (This will also check permissions/create room if needed, 
-        //    although for a pure GET we might just want to find it. 
-        //    But for consistency, we reuse the service logical mostly for finding).
-
-        // Actually, for REST fetch, just finding the room is safer/faster
-        const chatRoom = await ChatRoom.findOne({ projectId }).populate('messages.sender', 'name email');
+        // 2. Find the ChatRoom
+        const chatRoom = await ChatRoom.findOne({ projectId } as any);
 
         if (!chatRoom) {
             // Return empty history if room doesn't exist yet
@@ -33,7 +30,12 @@ export const getProjectChatHistory = async (req: Request, res: Response): Promis
             return;
         }
 
-        res.json(chatRoom.messages);
+        // 3. Fetch messages for this room
+        const messages = await Message.find({ roomId: chatRoom._id } as any)
+            .sort({ createdAt: 1 })
+            .populate('senderId', 'name email');
+
+        res.json(messages);
     } catch (error) {
         console.error("Error fetching chat history:", error);
         res.status(500).json({ error: 'Internal Server Error' });
