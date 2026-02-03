@@ -48,18 +48,21 @@ export const socketAuthMiddleware = (socket: Socket, next: (err?: ExtendedError)
         const extractId = (obj: any): string | null => {
             if (!obj) return null;
             if (typeof obj === 'string') return obj;
+            // If it's the [object Object] string, it's already ruined
+            if (obj === '[object Object]') return null;
             if (typeof obj === 'object') {
-                return obj.id || obj._id || null;
+                return obj.id || obj._id || (obj.toString() !== '[object Object]' ? obj.toString() : null);
             }
             return null;
         };
 
         // Normalized user object from payload (handles flat, nested 'user')
         const userPayload = (decoded.user && typeof decoded.user === 'object') ? decoded.user : decoded;
-        const rawId = userPayload.id || userPayload._id;
-        const userId = extractId(rawId);
 
-        if (!userId || typeof userId !== 'string') {
+        // Try to get ID from multiple common keys
+        const userId = extractId(userPayload.id) || extractId(userPayload._id) || extractId(userPayload.sub);
+
+        if (!userId) {
             console.error("   ❌ Auth Error: No valid user ID found in token payload:", JSON.stringify(decoded));
             return next(new Error('Authentication error: No user ID in token'));
         }
@@ -70,7 +73,7 @@ export const socketAuthMiddleware = (socket: Socket, next: (err?: ExtendedError)
             name: userPayload.name || 'User'
         };
 
-        console.log("   ✅ User Authenticated:", userId, `(${userPayload.role})`);
+        console.log(`   ✅ User Authenticated: ${userId} (Payload Type: ${typeof (userPayload.id || userPayload._id)})`);
         next();
     } catch (err) {
         return next(new Error('Authentication error: Invalid token'));
