@@ -1,6 +1,6 @@
 import { Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
-import cookie from 'cookie';
+import * as cookie from 'cookie';
 import { ExtendedError } from 'socket.io/dist/namespace';
 
 export interface AuthSocket extends Socket {
@@ -12,15 +12,16 @@ export interface AuthSocket extends Socket {
 }
 
 export const socketAuthMiddleware = (socket: Socket, next: (err?: ExtendedError) => void) => {
-    console.log("🔍 [AUTH-DEBUG] Handshake Auth:", JSON.stringify(socket.handshake.auth));
-    console.log("🔍 [AUTH-DEBUG] Cookies Presence:", !!socket.handshake.headers.cookie);
-
     const cookieHeader = socket.handshake.headers.cookie;
     let token = null;
 
     if (cookieHeader) {
-        const cookies = cookie.parse(cookieHeader);
-        token = cookies.app_session;
+        try {
+            const cookies = cookie.parse(cookieHeader);
+            token = cookies.app_session;
+        } catch (e) {
+            console.error("🔍 [AUTH] Cookie parse failed:", e);
+        }
     }
 
     if (!token && socket.handshake.auth && socket.handshake.auth.token) {
@@ -38,7 +39,6 @@ export const socketAuthMiddleware = (socket: Socket, next: (err?: ExtendedError)
 
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as any;
-        console.log("   📦 Raw Payload:", JSON.stringify(decoded));
 
         const extractId = (val: any): string | null => {
             if (!val) return null;
@@ -48,26 +48,30 @@ export const socketAuthMiddleware = (socket: Socket, next: (err?: ExtendedError)
                 return (val !== '[object Object]' && val.length > 5) ? val : null;
             }
 
-            // 2. Handle Binary Buffer Object (the current "smoking gun")
-            // Structure observed: { buffer: { "0": 105, "1": 63, ... } }
+            // 2. Handle Binary Buffer Object (smoking gun)
             if (typeof val === 'object') {
-                const target = val._id || val.id || val; // Check nested or self
-                if (target && target.buffer && typeof target.buffer === 'object') {
+                // If it's the raw buffer object or nested under .buffer or ._id
+                const target = val.buffer || val._id || val.id || val;
+
+                // Check if it's the specific { "0": 105, ... } structure seen in logs
+                const bufferObj = (target && typeof target === 'object' && target.buffer) ? target.buffer : target;
+
+                if (bufferObj && typeof bufferObj === 'object' && ('0' in bufferObj || 'data' in bufferObj)) {
                     try {
-                        const bytes = Object.values(target.buffer) as number[];
+                        const data = bufferObj.data || Object.values(bufferObj);
+                        const bytes = data as number[];
                         const hex = bytes.map(b => b.toString(16).padStart(2, '0')).join('');
                         if (hex.length === 24) return hex;
                     } catch (e) {
-                        console.error("   ⚠️ Failed to parse binary buffer ID");
+                        // fallback to recursion
                     }
                 }
 
                 // 3. Recursive check for common keys
-                const candidate = val._id || val.id || val.sub;
-                if (candidate && candidate !== val) return extractId(candidate);
-
-                // 4. Final Fallback: if it's the raw payload, try 'user'
                 if (val.user) return extractId(val.user);
+                if (val._id && val._id !== val) return extractId(val._id);
+                if (val.id && val.id !== val) return extractId(val.id);
+                if (val.sub) return extractId(val.sub);
             }
             return null;
         };
@@ -75,21 +79,17 @@ export const socketAuthMiddleware = (socket: Socket, next: (err?: ExtendedError)
         const userId = extractId(decoded);
 
         if (!userId) {
-            console.error("   ❌ Auth Error: No valid User ID in payload");
+            console.error("   ❌ [AUTH] No valid ID found. Payload:", JSON.stringify(decoded));
             return next(new Error('Authentication error: Invalid user identity in token'));
         }
 
-        // The name might be flat in the payload or under decoded.user
-        const safeName = (decoded.name || decoded.user?.name || 'User').toString();
-        const safeRole = (decoded.role || decoded.user?.role || 'user').toString();
-
         (socket as AuthSocket).user = {
             _id: userId,
-            role: safeRole,
-            name: safeName
+            role: (decoded.role || decoded.user?.role || 'user').toString(),
+            name: (decoded.name || decoded.user?.name || 'User').toString()
         };
 
-        console.log(`   ✅ Auth Success: ${safeName} (${userId})`);
+        console.log(`   ✅ [AUTH] Success: ${userId}`);
         next();
     } catch (err) {
         return next(new Error('Authentication error: Invalid token'));
