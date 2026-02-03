@@ -47,24 +47,18 @@ export const getOrCreateChatRoom = async (projectId: string, userId: string): Pr
     }
 
     // 3. Authorization Check
-    // Admin (Manager) or Client are allowed.
+    // Global Admin, Project Manager, or Client are allowed.
+    const isAdmin = user.role === 'admin';
     const isManager = project.manager.toString() === uId.toString();
-    // Note: Assuming project has clientEmail, we might need to look up client user by email if client ID is not directly stored or check if user.email matches project.clientEmail
-    // Based on the user's prompt, they want STRICT Admin and Client role check.
+    const isClient = user.role === 'client' && project.clientEmail === user.email;
 
-    // In the User model provided earlier, role is a string.
-    const isClient = user.role === 'client' && project.clientEmail === user.email; // Basic check, ideally project should store clientId
-
-    // Check if user is in engineers list (optional, based on requirement "admin and client role nothing else" -> usually engineers are also involved, but user said STRICTLY ADMIN AND CLIENT. 
-    // "just admin can chat with client and same way client with admin". So engineers are OUT for now based on prompt.)
-
-    if (!isManager && !isClient) {
+    if (!isAdmin && !isManager && !isClient) {
         // Fallback: Check if we can find the client user object if not manually linked
-        // If the user attempting to join IS the client email on file
         if (project.clientEmail && user.email === project.clientEmail) {
             // Authorized as Client
         } else {
-            throw new Error("Unauthorized: Only Project Manager and Client can access this chat.");
+            console.error(`❌ [AUTH] Denied Access: User=${uId} (Role=${user.role}), Project=${pId}`);
+            throw new Error("Unauthorized: Only Admins, Project Managers, and the assigned Client can access this chat.");
         }
     }
 
@@ -87,6 +81,11 @@ export const getOrCreateChatRoom = async (projectId: string, userId: string): Pr
         }
 
         if (clientId) members.push(clientId);
+
+        // Add the creator if they are an Admin/Manager but not the default manager
+        if (uId.toString() !== project.manager.toString()) {
+            members.push(uId);
+        }
 
         room = await ChatRoom.create({
             type: "project",
