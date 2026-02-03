@@ -35,6 +35,7 @@ export const socketAuthMiddleware = (socket: Socket, next: (err?: ExtendedError)
 
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as any;
+        console.log("   📦 Raw Payload:", JSON.stringify(decoded));
 
         const extractId = (val: any): string | null => {
             if (!val) return null;
@@ -42,15 +43,24 @@ export const socketAuthMiddleware = (socket: Socket, next: (err?: ExtendedError)
                 return (val !== '[object Object]' && val.length > 5) ? val : null;
             }
             if (typeof val === 'object') {
-                return extractId(val.id || val._id || val.sub);
+                // If it's a Mongoose object or something with _id/id
+                const candidate = val.id || val._id || val.sub;
+                if (candidate) return extractId(candidate);
+
+                // If it's the raw payload itself and has 'user' property
+                if (val.user) return extractId(val.user);
+
+                // Fallback to string representation if it looks like a hex ID
+                const str = val.toString();
+                return (str !== '[object Object]' && str.length > 5) ? str : null;
             }
             return null;
         };
 
-        const userId = extractId(decoded.user) || extractId(decoded);
+        const userId = extractId(decoded);
 
         if (!userId) {
-            console.error("❌ Auth Error: Could not find valid ID in payload:", JSON.stringify(decoded));
+            console.error("   ❌ Auth Error: No valid User ID in payload");
             return next(new Error('Authentication error: Invalid user identity in token'));
         }
 
@@ -60,7 +70,7 @@ export const socketAuthMiddleware = (socket: Socket, next: (err?: ExtendedError)
             name: (decoded.user?.name || decoded.name || 'User').toString()
         };
 
-        console.log(`✅ Socket Auth Success: ${userId} (${(socket as AuthSocket).user?.role})`);
+        console.log(`   ✅ Auth Success: ${userId}`);
         next();
     } catch (err) {
         return next(new Error('Authentication error: Invalid token'));

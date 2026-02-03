@@ -25,9 +25,13 @@ export const handleSocketEvents = (io: Server) => {
         // Join Project Chat (Auto-Create/Get)
         socket.on('join_project_chat', async ({ projectId }: { projectId: string }) => {
             try {
-                console.log(`[DEBUG] Join Attempt: Project=${projectId} (${typeof projectId}), User=${_id} (${typeof _id})`);
-                // 1. Get or Create Room (this handles auth internally too)
-                const room = await chatService.getOrCreateChatRoom(projectId, _id.toString());
+                const safeUserId = String(_id);
+                const safeProjectId = String(projectId);
+
+                console.log(`[DEBUG] Join Attempt: Project=${safeProjectId}, User=${safeUserId}`);
+
+                // 1. Get or Create Room
+                const room = await chatService.getOrCreateChatRoom(safeProjectId, safeUserId);
 
                 if (room) {
                     const roomId = room._id.toString();
