@@ -42,20 +42,32 @@ export const socketAuthMiddleware = (socket: Socket, next: (err?: ExtendedError)
 
         const extractId = (val: any): string | null => {
             if (!val) return null;
+
+            // 1. If it's already a valid string
             if (typeof val === 'string') {
                 return (val !== '[object Object]' && val.length > 5) ? val : null;
             }
+
+            // 2. Handle Binary Buffer Object (the current "smoking gun")
+            // Structure observed: { buffer: { "0": 105, "1": 63, ... } }
             if (typeof val === 'object') {
-                // If it's a Mongoose object or something with _id/id
-                const candidate = val.id || val._id || val.sub;
-                if (candidate) return extractId(candidate);
+                const target = val._id || val.id || val; // Check nested or self
+                if (target && target.buffer && typeof target.buffer === 'object') {
+                    try {
+                        const bytes = Object.values(target.buffer) as number[];
+                        const hex = bytes.map(b => b.toString(16).padStart(2, '0')).join('');
+                        if (hex.length === 24) return hex;
+                    } catch (e) {
+                        console.error("   ⚠️ Failed to parse binary buffer ID");
+                    }
+                }
 
-                // If it's the raw payload itself and has 'user' property
+                // 3. Recursive check for common keys
+                const candidate = val._id || val.id || val.sub;
+                if (candidate && candidate !== val) return extractId(candidate);
+
+                // 4. Final Fallback: if it's the raw payload, try 'user'
                 if (val.user) return extractId(val.user);
-
-                // Fallback to string representation if it looks like a hex ID
-                const str = val.toString();
-                return (str !== '[object Object]' && str.length > 5) ? str : null;
             }
             return null;
         };
