@@ -64,13 +64,17 @@ export const socketAuthMiddleware = (socket: Socket, next: (err?: ExtendedError)
             return next(new Error('Authentication error: Invalid user identity in token'));
         }
 
+        // The name might be flat in the payload or under decoded.user
+        const safeName = (decoded.name || decoded.user?.name || 'User').toString();
+        const safeRole = (decoded.role || decoded.user?.role || 'user').toString();
+
         (socket as AuthSocket).user = {
             _id: userId,
-            role: (decoded.user?.role || decoded.role || 'user').toString(),
-            name: (decoded.user?.name || decoded.name || 'User').toString()
+            role: safeRole,
+            name: safeName
         };
 
-        console.log(`   ✅ Auth Success: ${userId}`);
+        console.log(`   ✅ Auth Success: ${safeName} (${userId})`);
         next();
     } catch (err) {
         return next(new Error('Authentication error: Invalid token'));
