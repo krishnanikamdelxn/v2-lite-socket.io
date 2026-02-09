@@ -36,8 +36,35 @@ io.use(socketAuthMiddleware);
 // Routes
 app.use('/api/chat', chatRoutes);
 
-// Events
+// Events (for authenticated mobile clients)
 handleSocketEvents(io);
+
+// ============================================
+// 🔔 RELAY NAMESPACE (for backend notifications)
+// No authentication required for backend relay
+// ============================================
+const relayNamespace = io.of('/relay');
+
+relayNamespace.on('connection', (socket) => {
+    console.log(`[Relay] Backend connected: ${socket.id}`);
+
+    // Relay notification to all authenticated clients
+    socket.on('notification', (data) => {
+        console.log(`[Relay] Broadcasting notification:`, data);
+        // Emit to main namespace (all authenticated clients)
+        io.emit('notification', data);
+    });
+
+    // Relay announcement to all clients
+    socket.on('announcement:new', (data) => {
+        console.log(`[Relay] Broadcasting announcement:`, data);
+        io.emit('announcement:new', data);
+    });
+
+    socket.on('disconnect', () => {
+        console.log(`[Relay] Backend disconnected: ${socket.id}`);
+    });
+});
 
 app.get('/', (req, res) => {
     res.send('Socket Server is Running 🚀');

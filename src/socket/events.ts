@@ -68,6 +68,43 @@ export const handleSocketEvents = (io: Server) => {
                 };
 
                 io.to(room._id.toString()).emit('receive_message', mobileCompatibleMessage);
+
+                // ============================================
+                // 🔔 SEND NOTIFICATIONS TO OTHER ROOM MEMBERS
+                // ============================================
+                const senderName = name || 'Someone';
+                const notificationTitle = `💬 New Message`;
+                const notificationBody = content.length > 50 ? content.substring(0, 50) + '...' : content;
+
+                // Get all room members except sender, and deduplicate
+                const recipientIds = Array.from(new Set(
+                    room.members
+                        .filter((memberId: any) => memberId.toString() !== _id.toString())
+                        .map((memberId: any) => memberId.toString())
+                ));
+
+                for (const recipientIdStr of recipientIds) {
+                    // 1. Emit in-app toast notification via socket
+                    // This is for real-time foreground feedback
+                    io.to(recipientIdStr).emit('notification', {
+                        type: 'chat_message',
+                        title: notificationTitle,
+                        message: `${senderName}: ${notificationBody}`,
+                        userId: recipientIdStr,
+                        screen: 'ProjectChatScreen',
+                        params: { projectId }
+                    });
+
+                    // 2. Send push notification
+                    // This is for offline/backgrounded users
+                    chatService.sendChatPushNotification(
+                        recipientIdStr,
+                        senderName,
+                        notificationBody,
+                        projectId
+                    );
+                }
+
             } catch (err: any) {
                 console.error("Send Message Error:", err.message);
                 socket.emit('error', { message: 'Error sending message' });
@@ -91,6 +128,24 @@ export const handleSocketEvents = (io: Server) => {
             } catch (err) {
                 console.error('Error marking read:', err);
             }
+        });
+
+        // ============================================
+        // 🔔 NOTIFICATION RELAY HANDLERS
+        // ============================================
+
+        // Relay notification to specific user (by userId in payload)
+        socket.on('notification', (data: Record<string, unknown>) => {
+            console.log(`[SocketServer] Relaying notification:`, data);
+            // Broadcast to all clients (each client filters by userId)
+            socket.broadcast.emit('notification', data);
+        });
+
+        // Relay announcement to all users
+        socket.on('announcement:new', (data: Record<string, unknown>) => {
+            console.log(`[SocketServer] Relaying announcement:`, data);
+            // Broadcast to all connected clients
+            socket.broadcast.emit('announcement:new', data);
         });
 
         socket.on('disconnect', () => {

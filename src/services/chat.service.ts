@@ -115,3 +115,79 @@ export const markMessagesAsRead = async (roomId: string, userId: string, message
         { $addToSet: { readBy: { user: userId, readAt: new Date() } } }
     );
 };
+
+// ============================================
+// 🔔 PUSH NOTIFICATION FOR CHAT MESSAGES
+// ============================================
+import { sendPushNotification } from './pushNotification';
+
+export const sendChatPushNotification = async (
+    recipientId: string,
+    senderName: string,
+    messagePreview: string,
+    projectId: string
+): Promise<void> => {
+    try {
+        await sendPushNotification(
+            recipientId,
+            `💬 ${senderName}`,
+            messagePreview,
+            {
+                type: 'chat_message',
+                screen: 'ProjectChatScreen',
+                params: { projectId }
+            }
+        );
+    } catch (error) {
+        console.error('[Chat Push] Error:', error);
+    }
+};
+
+// ============================================
+// 📊 UNREAD MESSAGE COUNT
+// ============================================
+export const getUnreadCount = async (userId: string): Promise<number> => {
+    try {
+        // Find all rooms the user is a member of
+        const rooms = await ChatRoom.find({ members: userId } as any);
+        const roomIds = rooms.map(r => r._id);
+
+        // Count messages not read by this user
+        const count = await Message.countDocuments({
+            roomId: { $in: roomIds },
+            senderId: { $ne: userId },
+            'readBy.user': { $ne: userId },
+            isDeleted: false
+        } as any);
+
+        return count;
+    } catch (error) {
+        console.error('[Unread Count] Error:', error);
+        return 0;
+    }
+};
+
+export const getProjectUnreadCounts = async (userId: string): Promise<Record<string, number>> => {
+    try {
+        const rooms = await ChatRoom.find({ members: userId } as any);
+        const counts: Record<string, number> = {};
+
+        for (const room of rooms) {
+            const count = await Message.countDocuments({
+                roomId: room._id,
+                senderId: { $ne: userId },
+                'readBy.user': { $ne: userId },
+                isDeleted: false
+            } as any);
+
+            if (room.projectId) {
+                counts[room.projectId.toString()] = count;
+            }
+        }
+
+        return counts;
+    } catch (error) {
+        console.error('[Project Unread Counts] Error:', error);
+        return {};
+    }
+};

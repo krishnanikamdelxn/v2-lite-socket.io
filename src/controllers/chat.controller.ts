@@ -58,3 +58,54 @@ export const getProjectChatHistory = async (req: Request, res: Response): Promis
         res.status(500).json({ error: 'Internal Server Error' });
     }
 };
+
+// ============================================
+// 📊 GET UNREAD MESSAGE COUNT FOR USER
+// ============================================
+import { getUnreadCount, getProjectUnreadCounts } from '../services/chat.service';
+
+export const getUnreadMessageCount = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const userId = req.params.userId as string;
+
+        if (!userId) {
+            res.status(400).json({ error: 'User ID is required' });
+            return;
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+            res.status(400).json({ error: 'Invalid user ID format' });
+            return;
+        }
+
+        const count = await getUnreadCount(userId);
+
+        res.json({ success: true, unreadCount: count });
+    } catch (error) {
+        console.error("❌ [UNREAD] Internal Error:", error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+};
+
+export const getProjectUnreadCountsController = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const userId = req.params.userId as string;
+
+        if (!userId) {
+            res.status(400).json({ error: 'User ID is required' });
+            return;
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+            res.status(400).json({ error: 'Invalid user ID format' });
+            return;
+        }
+
+        const counts = await getProjectUnreadCounts(userId);
+
+        res.json({ success: true, counts });
+    } catch (error) {
+        console.error("❌ [PROJECT_UNREAD] Internal Error:", error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+};
