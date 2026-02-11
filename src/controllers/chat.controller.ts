@@ -34,14 +34,14 @@ export const getProjectChatHistory = async (req: Request, res: Response): Promis
         }
 
         // Fetch messages from the Message collection
+        // Don't populate senderId - user data doesn't exist in socket server DB
         const messages = await Message.find({ roomId: chatRoom._id } as any)
-            .sort({ createdAt: 1 })
-            .populate('senderId', 'name email');
+            .sort({ createdAt: 1 });
 
-        // Map for mobile compatibility: add 'sender' field
+        // Map for mobile compatibility: add 'sender' field and id
         const mobileCompatibleMessages = messages.map(msg => ({
             ...msg.toObject(),
-            sender: msg.senderId ? (msg.senderId as any)._id.toString() : null,
+            sender: msg.senderId ? msg.senderId.toString() : null,
             id: msg._id.toString()
         }));
 
