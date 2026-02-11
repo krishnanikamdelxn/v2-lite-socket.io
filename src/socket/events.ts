@@ -64,8 +64,7 @@ export const handleSocketEvents = (io: Server) => {
                     sender: _id.toString(), // Add 'sender' for mobile compatibility
                     senderId: {
                         _id: _id.toString(),
-                        name: name,
-                        email: authSocket.user?.email || ''
+                        name: name
                     },
                     id: message._id.toString()
                 };
