@@ -57,14 +57,17 @@ export const handleSocketEvents = (io: Server) => {
 
                 const message = await chatService.saveMessage(room._id.toString(), _id.toString(), content, type, fileUrl);
 
-                // Populate senderId for the broadcast
-                const populatedMessage = await message.populate('senderId', 'name email');
-
                 // Mobile app expects 'sender' (the ID) for bubble alignment logic
+                // No need to populate user data - we already have it from socket auth
                 const mobileCompatibleMessage = {
-                    ...populatedMessage.toObject(),
+                    ...message.toObject(),
                     sender: _id.toString(), // Add 'sender' for mobile compatibility
-                    id: populatedMessage._id.toString()
+                    senderId: {
+                        _id: _id.toString(),
+                        name: name,
+                        email: authSocket.user?.email || ''
+                    },
+                    id: message._id.toString()
                 };
 
                 io.to(room._id.toString()).emit('receive_message', mobileCompatibleMessage);
