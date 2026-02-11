@@ -22,28 +22,21 @@ export const getProjectChatHistory = async (req: Request, res: Response): Promis
             return;
         }
 
-        // 1. Verify Project Exists
-        const project = await Project.findById(projectId);
-        if (!project) {
-            res.status(404).json({ error: 'Project not found' });
-            return;
-        }
-
-        // Actually, for REST fetch, just finding the room is safer/faster
-        // The previous logic assumed messages were embedded in ChatRoom, which is incorrect.
-        // We need to query the Message collection.
-        const chatRoom = await ChatRoom.findOne({ projectId: projectId as any }); // Find the room to get its ID if needed, though not strictly necessary for fetching messages.
+        // Find the chat room for this project
+        // No need to verify project exists - client app already validated it
+        const chatRoom = await ChatRoom.findOne({ projectId: projectId as any });
 
         if (!chatRoom) {
             // Return empty history if room doesn't exist yet
+            console.log(`[HISTORY] No chat room found for project ${projectId}, returning empty array`);
             res.json([]);
             return;
         }
 
-        // Fetch messages from the Message collection, linking them to the found chatRoom's projectId
+        // Fetch messages from the Message collection
         const messages = await Message.find({ roomId: chatRoom._id } as any)
-            .sort({ createdAt: 1 }) // Keep the sort order
-            .populate('senderId', 'name email'); // Correctly query Message model
+            .sort({ createdAt: 1 })
+            .populate('senderId', 'name email');
 
         // Map for mobile compatibility: add 'sender' field
         const mobileCompatibleMessages = messages.map(msg => ({
@@ -52,6 +45,7 @@ export const getProjectChatHistory = async (req: Request, res: Response): Promis
             id: msg._id.toString()
         }));
 
+        console.log(`[HISTORY] Returning ${mobileCompatibleMessages.length} messages for project ${projectId}`);
         res.json(mobileCompatibleMessages);
     } catch (error) {
         console.error("❌ [HISTORY] Internal Error:", error);
