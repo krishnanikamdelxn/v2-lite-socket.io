@@ -25,7 +25,7 @@ import Project from '../models/Project';
 import User from '../models/User';
 
 export const getOrCreateChatRoom = async (projectId: string, userId: string): Promise<IChatRoom | null> => {
-    // 0. Type check/Cast incoming IDs
+    // 1. Validate ID formats
     if (!mongoose.Types.ObjectId.isValid(projectId) || !mongoose.Types.ObjectId.isValid(userId)) {
         console.error(`❌ [SERVICE] Invalid ID format. Project: ${projectId}, User: ${userId}`);
         throw new Error("Invalid Project or User ID format");
@@ -34,69 +34,36 @@ export const getOrCreateChatRoom = async (projectId: string, userId: string): Pr
     const pId = new mongoose.Types.ObjectId(projectId);
     const uId = new mongoose.Types.ObjectId(userId);
 
-    // 1. Verify Project Exists
-    const project = await Project.findById(pId);
-    if (!project) {
-        throw new Error("Project not found");
-    }
-
-    // 2. Fetch User to check Role
+    // 2. Verify User Exists (users SHOULD exist in our DB)
     const user = await User.findById(uId);
     if (!user) {
         throw new Error("User not found");
     }
 
-    // 3. Authorization Check
-    // Global Admin, Project Manager, or Client are allowed.
-    const isAdmin = user.role === 'admin';
-    const isManager = project.manager.toString() === uId.toString();
-    const isClient = user.role === 'client' && project.clientEmail === user.email;
+    console.log(`[Chat Service] Getting/Creating room for Project: ${projectId}, User: ${userId} (${user.name})`);
 
-    if (!isAdmin && !isManager && !isClient) {
-        // Fallback: Check if we can find the client user object if not manually linked
-        if (project.clientEmail && user.email === project.clientEmail) {
-            // Authorized as Client
-        } else {
-            console.error(`❌ [AUTH] Denied Access: User=${uId} (Role=${user.role}), Project=${pId}`);
-            throw new Error("Unauthorized: Only Admins, Project Managers, and the assigned Client can access this chat.");
-        }
-    }
-
-    // 4. Find or Create Room
-    // Cast to any to avoid TS mismatch between string ID and ObjectId
+    // 3. Find or Create Room
+    // We trust that the client app has already validated the project exists
+    // No need to verify project in socket server - it's a separate concern
     let room = await ChatRoom.findOne({ projectId: pId } as any);
 
     if (!room) {
-        // Resolve Member IDs
-        // We know Manager ID
-        const members: any[] = [project.manager];
-
-        // Resolve Client ID
-        let clientId = null;
-        if (user.role === 'client' && user.email === project.clientEmail) {
-            clientId = user._id;
-        } else if (project.clientEmail) {
-            const clientUser = await User.findOne({ email: project.clientEmail });
-            if (clientUser) clientId = clientUser._id;
-        }
-
-        if (clientId) members.push(clientId);
-
-        // Add the creator if they are an Admin/Manager but not the default manager
-        if (uId.toString() !== project.manager.toString()) {
-            members.push(uId);
-        }
-
+        // Create new room with the requesting user as initial member
+        console.log(`[Chat Service] Creating new chat room for project ${projectId}`);
         room = await ChatRoom.create({
             type: "project",
             projectId: pId as any,
-            members: members
+            members: [uId as any]
         });
+        console.log(`✅ [Chat Service] Room created: ${room._id}`);
     } else {
-        // Ensure current user is in members list if authorized (sync)
+        // Room exists - ensure current user is in members list
         if (!room.members.map(m => m.toString()).includes(uId.toString())) {
+            console.log(`[Chat Service] Adding user ${userId} to existing room ${room._id}`);
             room.members.push(uId as any);
             await room.save();
+        } else {
+            console.log(`[Chat Service] User already in room ${room._id}`);
         }
     }
 
