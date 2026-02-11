@@ -34,13 +34,9 @@ export const getOrCreateChatRoom = async (projectId: string, userId: string): Pr
     const pId = new mongoose.Types.ObjectId(projectId);
     const uId = new mongoose.Types.ObjectId(userId);
 
-    // 2. Verify User Exists (users SHOULD exist in our DB)
-    const user = await User.findById(uId);
-    if (!user) {
-        throw new Error("User not found");
-    }
-
-    console.log(`[Chat Service] Getting/Creating room for Project: ${projectId}, User: ${userId} (${user.name})`);
+    // 2. User is already authenticated via JWT token in socket middleware
+    // No need to re-verify in database - trust the authentication layer
+    console.log(`[Chat Service] Getting/Creating room for Project: ${projectId}, User: ${userId}`);
 
     // 3. Find or Create Room
     // We trust that the client app has already validated the project exists
